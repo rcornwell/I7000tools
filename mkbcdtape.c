@@ -305,7 +305,7 @@ int main(int argc, char **argv)
 		      else if(!check_blocking(line_buffer, &cblk))
  	      	          write_block(tape, reclen, line_buffer);
  		      if(strncmp(line_buffer, datamark, 16) == 0)
-			  cblk = block;
+			  cblk = 1;
 		   } else {
 		      /* Copy to buffer */
 		      for(i = 0; i < reclen; i++) {
