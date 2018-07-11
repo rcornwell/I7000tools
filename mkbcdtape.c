@@ -252,6 +252,8 @@ int main(int argc, char **argv)
 		case '\r': break;
 		case '\n': eol = 1;/* Do eol */ break;
 		case '\t': 
+			*tape_char++ = 0120;
+			len++;
 			while((len & 7) != 0 && len < reclen) {
 			     *tape_char++ = 0120;
 			     len++;
