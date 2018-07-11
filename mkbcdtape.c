@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <string.h>
 
 int  verbose = 1;		/* 1 for verbose mode (default), 0 for "quiet" mode */
 int  p7b = 0;
@@ -192,12 +193,12 @@ int main(int argc, char **argv)
       exit(1);
    }
 
-   if((tape_buffer = (unsigned char  *)calloc(16 * reclen,1)) == NULL) {
+   if((tape_buffer = (unsigned char  *)calloc(4096,1)) == NULL) {
    	fprintf(stderr,"calloc of tape buffer failed...\n");
       exit(1);
    }
 
-   if((line_buffer = (unsigned char  *)calloc(reclen,1)) == NULL) {
+   if((line_buffer = (unsigned char  *)calloc(250,1)) == NULL) {
    	fprintf(stderr,"calloc of tape buffer failed...\n");
       exit(1);
    }
@@ -230,9 +231,14 @@ int main(int argc, char **argv)
 	   /* Put out a tape mark */
 	   write_mark(tape);
 	   if (verbose)
-	       printf("EOF: %d records\n", record - last);
+	       fprintf(stderr, "EOF: %d records, reclen=%d blocking=%d\n", record - last,
+			reclen, block);
 	   last = record;
            cblk = block;
+	} else if (strncmp(tname, "-r", 2) == 0) {
+      	   reclen = atoi(&tname[2]);
+	} else if (strncmp(tname, "-b", 2) == 0) {
+      	   block = atoi(&tname[2]);
 	} else {
 	    /* Process a file */
 	    if ((in = fopen(tname, "r")) == NULL) {
@@ -332,7 +338,8 @@ int main(int argc, char **argv)
 	            /* Write tape mark */
 	   	    write_mark(tape);
 	    	    if (verbose)
-		        printf("File: %d records\n", record - last);
+		        fprintf(stderr, "File: %d records, recl=%d, blocking=%d\n", record - last,
+				reclen,block);
 		    last = record;
 		    cblk = block;
 		}
@@ -357,7 +364,8 @@ int main(int argc, char **argv)
 		   if (strncmp(line_buffer, eofmark, 16) == 0) {
 	   	    	write_mark(tape);
 	    	        if (verbose)
-		            printf("File: %d records\n", record - last);
+		            fprintf(stderr, "File: %d records, recl=%d, blocking=%d\n", record - last,
+				reclen,block);
 		        last = record;
 		   } else if(!check_blocking(line_buffer, &cblk))
  	      	        write_block(tape, reclen, line_buffer);
@@ -436,15 +444,16 @@ int main(int argc, char **argv)
 
    if (verbose) {
        if (record != last)  
-           printf("EOF: %d records\n", record - last);
-       printf("Output after %d records\n",record);
+           fprintf(stderr, "EOF: %d records, reclen=%d blocking=%d\n", record - last,
+		reclen, block);
+       fprintf(stderr, "Output after %d records\n",record);
    }
 
    free(tape_buffer);
    free(line_buffer);
    fclose(tape);
    if (verbose) 
-       printf("Done.\n");
+       fprintf(stderr, "Done.\n");
    return(0);
 }
 
