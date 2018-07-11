@@ -2,9 +2,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#include "ubcd.h"
-
-
 char verbose = 1;		// 1 for verbose mode (default), 0 for "quiet" mode
 int  reclen = 84;		// Default record len.
 int  block = 10;		// Default records per block.
@@ -13,10 +10,36 @@ int  block = 10;		// Default records per block.
 //	wordmark bits, etc).
 //
 
-int parity_table[64] = {
-	0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0,1,0,0,1,0,1,1,0,0,1,1,0,1,0,0,1,
-	1,0,0,1,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0
+
+char parity_table[64] = {
+        /* 0    1    2    3    4    5    6    7 */
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0100,0000,0000,0100,0000,0100,0100,0000,
+        0100,0000,0000,0100,0000,0100,0100,0000,
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0100,0000,0000,0100,0000,0100,0100,0000,
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0100,0000,0000,0100,0000,0100,0100,0000
 };
+
+const char ascii_to_six[128] = {
+         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,         /* 0 - 37 */
+         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+        060, 052,  -1, 077, 053, 017,  -1, 014,         /* 40 - 77 */
+        074, 034, 054, 020, 073, 040, 033, 061,
+        000, 001, 002, 003, 004, 005, 006, 007,
+        010, 011, 015, 056, 036, 013, 016, 072,
+        037, 021, 022, 023, 024, 025, 026, 027,         /* 100 - 137 */
+        030, 031, 041, 042, 043, 044, 045, 046,
+        047, 050, 051, 062, 063, 064, 065, 066,
+        067, 070, 071, 035, 076, 055, 057, 012,
+        000, 021, 022, 023, 024, 025, 026, 027,         /* 140 - 177 */
+        030, 031, 041, 042, 043, 044, 045, 046,
+        047, 050, 051, 062, 063, 064, 065, 066,
+        067, 070, 071,  -1,  -1,  -1,  -1,  -1  };  
 
 int main(int argc, char **argv)
 {
@@ -94,14 +117,22 @@ int main(int argc, char **argv)
 	case '\r': break;
 	case '\n': eol = 1;/* Do eol */ break;
 	case '\t': 
-	   while((len & 7) != 0) {
-	   *tape_char++ = 060;
-	   len++;
-	   }
-	   break;
-	case '~': eol = 1; break; /* term block and write EOF */
+	        while((len & 7) != 0) {
+	             *tape_char++ = 0120;
+	             len++;
+	        }
+	        break;
+	case '~': eol = 1; 
+		while((ch = fgetc(in)) != EOF && ch != '\n');
+		ch = '~';
+	        break; /* term block and write EOF */
 	default:
-		*tape_char++ = ch /*ascii_bcd[ch]*/;
+		ch = ascii_to_six[ch];
+		ch ^= (020 & ch) << 1;
+		if (ch == 0)
+		    ch = 012;
+		ch |= parity_table[ch];
+		*tape_char++ = ch;
 		len++;
 		break;
 	}
@@ -109,10 +140,10 @@ int main(int argc, char **argv)
 	   /* Fill in record with blanks */
 	   record++;
 	   while (len < reclen) {
-	     *tape_char++ = 060;
+	     *tape_char++ = 0120;
 	     len++;
 	   }
-	   if ((*line_buffer == 043/*$*/ && blen != 0) ||
+	   if ((*line_buffer == 053/*$*/ && blen != 0) ||
 	        blen == (reclen * block)) {
 	      unsigned long sz = blen;
 	      fwrite(&sz, sizeof(unsigned long), 1, tape);
@@ -120,7 +151,7 @@ int main(int argc, char **argv)
 	      fwrite(&sz, sizeof(unsigned long), 1, tape);
 	      blen = 0;
 	   }
-	   if (*line_buffer == 043/*$*/) {
+	   if (*line_buffer == 053/*$*/) {
 	      unsigned long sz = len;
 	      fwrite(&sz, sizeof(unsigned long), 1, tape);
 	      fwrite(line_buffer, len, 1, tape);
@@ -146,10 +177,10 @@ int main(int argc, char **argv)
 	   int i;
 	   /* Fill in record with blanks */
 	   while (len < reclen) {
-	     *tape_char++ = 060;
+	     *tape_char++ = 0120;
 	     len++;
 	   }
-	   if ((*line_buffer == 043/*$*/ && blen != 0) ||
+	   if ((*line_buffer == 053/*$*/ && blen != 0) ||
 	        blen == (reclen * block)) {
 	      unsigned long sz = blen;
 	      fwrite(&sz, sizeof(unsigned long), 1, tape);
