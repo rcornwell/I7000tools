@@ -44,7 +44,7 @@ char bcd_ascii[64] = {
 	'|',	/* 26   A8 2   - record mark */
 	',',	/* 27   A8 21  - comma */
 	'(',	/* 28   A84    - paren */
-	'^',	/* 29   A84 1  - word separator */
+	'~',	/* 29   A84 1  - word separator */
 	'\\',	/* 30   A842   - left oblique */
 	'"',    /* 31   A8421  - segment mark */
 	'-',	/* 32  B       - hyphen */
@@ -216,12 +216,20 @@ main(int argc, char *argv[]) {
 		    if (ch == 012)
 			    ch = 0;   
 		}
-		if (mark || ch != 032)
+		if (ch == 032) {
+		   if (mark) {
+			putchar(bcd_ascii[ch]);
+			col++;
+		   } else {
+			putchar('\n');
+			col = 0;
+		   }
+		} else {
 		   putchar(bcd_ascii[ch]);
-		if((++col == reclen && sz != (i+1)) || 
-                            (!mark && ch == 032)){
-		   putchar('\n');
-		   col = 0;
+		   if((++col == reclen && sz != (i+1))){
+		       putchar('\n');
+		       col = 0;
+		   }
 		}
 	    }
 	    if (eor)
