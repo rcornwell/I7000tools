@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-char verbose = 1;		/* 1 for verbose mode (default), 0 for "quiet" mode */
+int  verbose = 1;		/* 1 for verbose mode (default), 0 for "quiet" mode */
+int  p7b = 0;
 int  reclen = 84;		/* Default record len. */
 int  block = 10;		/* Default records per block. */
 char *eot_rec = NULL;		/* Record to write at end of tape */
@@ -10,6 +11,11 @@ typedef unsigned long int	uint32;	/* Header unit */
 unsigned char	blocking[20] = "$BLOCK         BCD,";
 unsigned char	eofmark[20] =  "$EOF               ";
 unsigned char   datamark[20] = "$DATA              ";
+void usage();
+
+#define TAPE_IRG 0200
+#define BCD_TM 017      
+
 /*
   	Parity table for the 64 BCD characters (without parity bit, 
   	wordmark bits, etc). 
@@ -86,12 +92,43 @@ int check_blocking(unsigned char *buffer, int *newblock) {
      return 0;
 }
 
+/* Write EOM indicator */
+void write_eom(FILE *f) {
+   if (p7b) {
+      fputc(BCD_TM|TAPE_IRG, f);
+   } else {
+   	static uint32 eom = 0xffffffff;
+        fwrite(&eom, sizeof(uint32), 1, f);
+   }
+}
+
+/* Put a tape mark on file */
+void write_mark(FILE *f) {
+   if (p7b) {
+      fputc(BCD_TM|TAPE_IRG, f);
+   } else {
+      static uint32 tape_mark = 0;
+      fwrite(&tape_mark, sizeof(uint32), 1, f);
+   }
+}
+
 /* Write out a TAP format block */
 void write_block(FILE *f, uint32 len, unsigned char *buffer) {
-     uint32 wlen = 0x7fffffff & ((len + 1) & ~1);
-     fwrite(&len, sizeof(uint32), 1, f);
-     fwrite(buffer, sizeof(unsigned char), wlen, f);
-     fwrite(&len, sizeof(uint32), 1, f);
+     if (p7b) {
+	/* Put IRG at end of record */
+	 buffer[0] |= TAPE_IRG;
+	 fwrite(buffer, sizeof(unsigned char), len, f);
+     } else {
+         uint32 wlen = 0x7fffffff & ((len + 1) & ~1);
+	 unsigned char	xlen[4];
+	 xlen[0] = len & 0xff;
+	 xlen[1] = (len >> 8) & 0xff;
+	 xlen[2] = (len >> 16) & 0xff;
+	 xlen[3] = (len >> 24) & 0xff;
+         fwrite(xlen, sizeof(unsigned char), 4, f);
+         fwrite(buffer, sizeof(unsigned char), wlen, f);
+         fwrite(xlen, sizeof(unsigned char), 4, f);
+     }
 }
 
 int main(int argc, char **argv)
@@ -103,8 +140,7 @@ int main(int argc, char **argv)
    unsigned char  *line_buffer;
    unsigned char  *tape_char;
    uint32	sz;
-   uint32       blen;
-   uint32	tape_mark = 0;
+   uint32       blen = 0;
    char	 	ch;
    int		len;
    int		cblk;
@@ -112,10 +148,7 @@ int main(int argc, char **argv)
    int		last = 0;
    int 		i;
 
-   void usage();
-
-
-   //	Do options processing
+   /*	Do options processing */
    while(--argc && **(++argv) == '-') {
    	switch(tolower((*argv)[1])) {
       case 'o':
@@ -135,28 +168,16 @@ int main(int argc, char **argv)
 	 eot_rec = *++argv;
 	 --argc;
 	 break;
+      case 'p':
+	 p7b = 1;
+	 break;
       default:
       	fprintf(stderr,"Unknown option: %s\n",*argv);
          usage();
       }
    }
 
-   /* Translate message for quicker compare */
-   for(i = 0; i < 20; i++) {
-	ch = blocking[i];
-	ch = ascii_to_six[ch];
-	ch |= parity_table[ch];
-	blocking[i] = ch;
-	ch = eofmark[i];
-	ch = ascii_to_six[ch];
-	ch |= parity_table[ch];
-	eofmark[i] = ch;
-	ch = datamark[i];
-	ch = ascii_to_six[ch];
-	ch |= parity_table[ch];
-	datamark[i] = ch;
-   }
-
+   /* If nothing to do, report usage and exit */
    if(argc == 0 || tname == NULL) {
    	usage();
    }
@@ -181,6 +202,23 @@ int main(int argc, char **argv)
       exit(1);
    }
 
+   /* Translate message for quicker compare */
+   for(i = 0; i < 20; i++) {
+	ch = blocking[i];
+	ch = ascii_to_six[ch];
+	ch |= parity_table[ch];
+	blocking[i] = ch;
+	ch = eofmark[i];
+	ch = ascii_to_six[ch];
+	ch |= parity_table[ch];
+	eofmark[i] = ch;
+	ch = datamark[i];
+	ch = ascii_to_six[ch];
+	ch |= parity_table[ch];
+	datamark[i] = ch;
+   }
+
+   /* Process files */
    while(--argc >= 0) {
 	tname = *argv++;
 	if (strcmp(tname, "-") == 0) {
@@ -190,8 +228,9 @@ int main(int argc, char **argv)
 	      blen = 0;
            }
 	   /* Put out a tape mark */
-	   fwrite(&tape_mark, sizeof(uint32), 1, tape);
-	   printf("EOF: %d records\n", record - last);
+	   write_mark(tape);
+	   if (verbose)
+	       printf("EOF: %d records\n", record - last);
 	   last = record;
            cblk = block;
 	} else {
@@ -201,7 +240,8 @@ int main(int argc, char **argv)
 	        perror("");
 	        exit(1);
 	    }
-            fprintf(stderr, "Reading file %s\n", tname);
+	    if (verbose)
+                fprintf(stderr, "Reading file %s\n", tname);
             cblk = block;
 	    blen = len = 0;
 	    tape_char = line_buffer;
@@ -288,8 +328,9 @@ int main(int argc, char **argv)
 		      blen = 0;
 		    }
 	            /* Write tape mark */
-		    fwrite(&tape_mark, sizeof(uint32), 1, tape);
-		    printf("File: %d records\n", record - last);
+	   	    write_mark(tape);
+	    	    if (verbose)
+		        printf("File: %d records\n", record - last);
 		    last = record;
 		    cblk = block;
 		}
@@ -312,8 +353,9 @@ int main(int argc, char **argv)
 		   }
 		   /* Check for EOF or new blocking */
 		   if (strncmp(line_buffer, eofmark, 16) == 0) {
-		        fwrite(&tape_mark, sizeof(uint32), 1, tape);
-		        printf("File: %d records\n", record - last);
+	   	    	write_mark(tape);
+	    	        if (verbose)
+		            printf("File: %d records\n", record - last);
 		        last = record;
 		   } else if(!check_blocking(line_buffer, &cblk))
  	      	        write_block(tape, reclen, line_buffer);
@@ -329,12 +371,13 @@ int main(int argc, char **argv)
 	    fclose(in);
         }   
    }
+
    /* Flush out buffer if anything in it. */
    if (blen != 0) 
         write_block(tape, blen, tape_buffer);
 
    /* Write tape mark */
-   fwrite(&tape_mark, sizeof(uint32), 1, tape);
+   write_mark(tape);
  
    /* Write out EOT record if there is one. */
    if (eot_rec) {
@@ -344,7 +387,8 @@ int main(int argc, char **argv)
 	    perror("");
 	    exit(1);
 	}
-	fprintf(stderr, "Reading file %s\n", tname);
+	if (verbose)
+	    fprintf(stderr, "Reading file %s\n", eot_rec);
 	len = 0;
 	tape_char = line_buffer;
 	while((ch = fgetc(in)) != EOF) {
@@ -386,17 +430,19 @@ int main(int argc, char **argv)
    }
 
    /* Put EOM */
-   sz = 0xffffffff;
-   fwrite(&sz, sizeof(uint32), 1, tape);
+   write_eom(tape);
 
-   if (record != last)	
-       printf("EOF: %d records\n", record - last);
-   printf("Output after %d records\n",record);
+   if (verbose) {
+       if (record != last)  
+           printf("EOF: %d records\n", record - last);
+       printf("Output after %d records\n",record);
+   }
 
    free(tape_buffer);
    free(line_buffer);
    fclose(tape);
-   printf("Done.\n");
+   if (verbose) 
+       printf("Done.\n");
    return(0);
 }
 
@@ -408,6 +454,7 @@ void usage()
    fprintf(stderr,"	-b#: # lines per block\n");
    fprintf(stderr,"	-r#: Characters per record #\n");
    fprintf(stderr,"     -e: name Name of end of tape record\n");
+   fprintf(stderr,"     -p: write BCD tape instead of TAP format\n");
    exit(1);
 }
 
