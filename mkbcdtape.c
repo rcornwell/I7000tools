@@ -5,6 +5,7 @@
 char verbose = 1;		// 1 for verbose mode (default), 0 for "quiet" mode
 int  reclen = 84;		// Default record len.
 int  block = 10;		// Default records per block.
+typedef unsigned long int	uint32;	// Header unit
 //
 //	Parity table for the 64 BCD characters (without parity bit,
 //	wordmark bits, etc).
@@ -24,22 +25,46 @@ char parity_table[64] = {
 };
 
 const char ascii_to_six[128] = {
-         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,         /* 0 - 37 */
-         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-         -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-        060, 052,  -1, 077, 053, 017,  -1, 014,         /* 40 - 77 */
-        074, 034, 054, 020, 073, 040, 033, 061,
-        000, 001, 002, 003, 004, 005, 006, 007,
-        010, 011, 015, 056, 036, 013, 016, 072,
-        037, 021, 022, 023, 024, 025, 026, 027,         /* 100 - 137 */
-        030, 031, 041, 042, 043, 044, 045, 046,
-        047, 050, 051, 062, 063, 064, 065, 066,
-        067, 070, 071, 035, 076, 055, 057, 012,
-        000, 021, 022, 023, 024, 025, 026, 027,         /* 140 - 177 */
-        030, 031, 041, 042, 043, 044, 045, 046,
-        047, 050, 051, 062, 063, 064, 065, 066,
-        067, 070, 071,  -1,  -1,  -1,  -1,  -1  };  
+/*   000 nul 001 soh 002 stx 003 etx 004 eot 005 enq 006 ack 007 bel */
+	-1,	-1,	-1,	-1,	-1,	-1,	-1,	-1,
+/*   010 bs  011 ht  012 nl  013 vt  014 np  015 cr  016 so  017 si */
+	-1,	-1,	-1,	-1,	-1,	-1,	-1,	-1,
+/*   020 dle 021 dc1 022 dc2 023 dc3 024 dc4 025 nak 026 syn 027 etb */
+	-1,	-1,	-1,	-1,	-1,	-1,	-1,	-1,
+/*   030 can 031 em  032 sub 033 esc 034 fs  035 gs  036 rs  037 us */
+	-1,	-1,	-1,	-1,	-1,	-1,	-1,	-1,
+/*   040 sp  041  !  042  "  043  #  044  $  045  %  046  &  047  ' */
+	020,	052,	037,	-1,	053,    077,    017,	014,
+/*   050  (  051  )  052  *  053  +  054  ,  055  -  056  .  057  / */
+	034,	074,	054,	060,	033,	040,	073,	021,
+/*   060  0  061  1  062  2  063  3  064  4  065  5  066  6  067  7 */
+	012,	001,	002,	003,	004,	005,	006,	007,
+/*   070  8  071  9  072  :  073  ;  074  <  075  =  076  >  077  ? */
+	010,	011,	015,	056,	076,	013,	016,	072,
+/*   100  @  101  A  102  B  103  C  104  D  105  E  106  F  107  G */
+	-1,	061,	062,	063,	064,	065,	066,	067,
+/*   110  H  111  I  112  J  113  K  114  L  115  M  116  N  117  O */
+	070,	071,	041,	042,	043,	044,	045,	046,
+/*   120  P  121  Q  122  R  123  S  124  T  125  U  126  V  127  W */
+	047,	050,	051,	022,	023,	024,	025,	026,
+/*   130  X  131  Y  132  Z  133  [  134  \  135  ]  136  ^  137  _ */
+	027,	030,	031,	075,	036,	055,	035,	057,
+/*   140  `  141  a  142  b  143  c  144  d  145  e  146  f  147  g */
+	014,	061,	062,	063,	064,	065,	066,	067,
+/*   150  h  151  i  152  j  153  k  154  l  155  m  156  n  157  o */
+	070,	071,	041,	042,	043,	044,	045,	046,
+/*   160  p  161  q  162  r  163  s  164  t  165  u  166  v  167  w */
+	047,	050,	051,	022,	023,	024,	025,	026,
+/*   170  x  171  y  172  z  173  {  174  |  175  }  176  ~  177 del */
+	027,	030,	031,     -1,	032,	 -1,	035,	-1,
+};
+
+void write_block(FILE *f, uint32 len, unsigned char *buffer) {
+     uint32 wlen = 0x7fffffff & ((len + 1) & ~1);
+     fwrite(&len, sizeof(uint32), 1, f);
+     fwrite(buffer, sizeof(unsigned char), wlen, f);
+     fwrite(&len, sizeof(uint32), 1, f);
+}
 
 int main(int argc, char **argv)
 {
@@ -49,10 +74,14 @@ int main(int argc, char **argv)
    unsigned char  *tape_buffer;
    unsigned char  *line_buffer;
    unsigned char  *tape_char;
-   char	 ch;
-   int   len;
-   int	 blen;
-   int   record = 0;
+   uint32	sz;
+   uint32       blen;
+   uint32	tape_mark = 0;
+   char	 	ch;
+   int		len;
+   int	   	record = 0;
+   int		last = 0;
+   int 		i;
 
    void usage();
 
@@ -104,109 +133,149 @@ int main(int argc, char **argv)
 
    while(--argc > 0) {
 	tname = *argv++;
-	if ((in = fopen(tname, "r")) == NULL) {
-	    fprintf(stderr, "Can't open input file %s: ", tname);
-	    perror("");
-	    exit(1);
-	}
-        blen = len = 0;
-	tape_char = line_buffer;
-	while((ch = fgetc(in)) != EOF) {
-	    int eol = 0;
-	switch(ch) {
-	case '\r': break;
-	case '\n': eol = 1;/* Do eol */ break;
-	case '\t': 
-	        while((len & 7) != 0) {
-	             *tape_char++ = 0120;
-	             len++;
-	        }
-	        break;
-	case '~': eol = 1; 
-		while((ch = fgetc(in)) != EOF && ch != '\n');
-		ch = '~';
-	        break; /* term block and write EOF */
-	default:
-		ch = ascii_to_six[ch];
-		ch ^= (020 & ch) << 1;
-		if (ch == 0)
-		    ch = 012;
-		ch |= parity_table[ch];
-		*tape_char++ = ch;
-		len++;
-		break;
-	}
-	if (eol || len == reclen) {
-	   /* Fill in record with blanks */
-	   record++;
-	   while (len < reclen) {
-	     *tape_char++ = 0120;
-	     len++;
-	   }
-	   if ((*line_buffer == 053/*$*/ && blen != 0) ||
-	        blen == (reclen * block)) {
-	      unsigned long sz = blen;
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
-	      fwrite(tape_buffer, blen, 1, tape);
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
+	if (strcmp(tname, "-") == 0) {
+	   /* Flush out buffer if anything in it. */
+	   if (blen != 0) {
+ 	      write_block(tape, blen, tape_buffer);
 	      blen = 0;
-	   }
-	   if (*line_buffer == 053/*$*/) {
-	      unsigned long sz = len;
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
-	      fwrite(line_buffer, len, 1, tape);
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
-	   } else {
-	      int i;
-	      for(i = 0; i < len; i++) {
-		 tape_buffer[blen++] = line_buffer[i];
-	      }
- 	   }
-	   len = 0;
-	   tape_char = line_buffer;
-	}
-	if (ch == '~') {
-	   unsigned long sz = 0;
-	   fwrite(&sz, sizeof(unsigned long), 1, tape);
-	}
-	   
-	}
-        fclose(in);
-	if (len != 0) {
-	   unsigned long sz;
-	   int i;
-	   /* Fill in record with blanks */
-	   while (len < reclen) {
-	     *tape_char++ = 0120;
-	     len++;
-	   }
-	   if ((*line_buffer == 053/*$*/ && blen != 0) ||
-	        blen == (reclen * block)) {
-	      unsigned long sz = blen;
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
-	      fwrite(tape_buffer, blen, 1, tape);
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
-	      blen = 0;
-	   }
-	   for(i = 0; i < len; i++) {
-	      tape_buffer[blen++] = line_buffer[i];
-	   }
-	}
-	if (blen != 0) {
-	      unsigned long sz = blen;
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
-	      fwrite(tape_buffer, blen, 1, tape);
-	      fwrite(&sz, sizeof(unsigned long), 1, tape);
-	      blen = 0;
-	   }
-   }	   
-   {
-	/* Put EOM */
-	   unsigned long sz = 0xffffffff;
-	   fwrite(&sz, sizeof(unsigned long), 1, tape);
+           }
+	   /* Put out a tape mark */
+	   fwrite(&tape_mark, sizeof(uint32), 1, tape);
+	   printf("EOF: %d records\n", record - last);
+	   last = record;
+	} else {
+	    /* Process a file */
+	    if ((in = fopen(tname, "r")) == NULL) {
+	        fprintf(stderr, "Can't open input file %s: ", tname);
+	        perror("");
+	        exit(1);
+	    }
+            fprintf(stderr, "Reading file %s\n", tname);
+	    blen = len = 0;
+	    tape_char = line_buffer;
+	    while((ch = fgetc(in)) != EOF) {
+		int eol = 0;
+		int eof = 0;
+		switch(ch) {
+		case '\r': break;
+		case '\n': eol = 1;/* Do eol */ break;
+		case '\t': 
+			while((len & 7) != 0 && len < reclen) {
+			     *tape_char++ = 0120;
+			     len++;
+			}
+			break;
+		case '~': 
+			if (len > 0)
+			    eol = 1; 
+			/* Read rest of line */
+			while((ch = fgetc(in)) != EOF && ch != '\n');
+			eof = 1;
+			break; /* term block and write EOF */
+		default:
+			if (ascii_to_six[ch] == -1) 
+			    fprintf(stderr, "Invalid char %c\n\r", ch);
+			ch = 077 & ascii_to_six[ch];
+			
+			if (ch == 0)
+			    ch = 012;
+			ch |= parity_table[ch];
+			*tape_char++ = ch;
+			len++;
+			break;
+		}
+
+		/* If at record length, grab input until end of line */
+		if (len == reclen) {
+		     while((ch = fgetc(in)) != EOF && ch != '\n');
+		     eol = 1;
+		}
+
+		/* Put record into buffer if at end of line */
+		if (eol) {
+		   record++;
+		   /* Fill in record with blanks */
+		   while (len < reclen) {
+		     *tape_char++ = 0120;
+		     len++;
+		   }
+
+		   /* If first char is $ output it in it's own record */
+		   if (*line_buffer == 053/*$*/) {
+		       /* Flush out buffer */
+		      if (blen != 0) {
+ 	      		  write_block(tape, blen, tape_buffer);
+		          blen = 0;
+		      }
+ 	      	      write_block(tape, reclen, line_buffer);
+		   } else {
+		      /* Copy to buffer */
+		      for(i = 0; i < reclen; i++) {
+			 tape_buffer[blen++] = line_buffer[i];
+		      }
+		   }
+		   len = 0;
+		   tape_char = line_buffer;
+		   /* If buffer full, dump it */
+		   if (blen == (reclen * block)) {
+ 	      	      write_block(tape, blen, tape_buffer);
+		      blen = 0;
+		   }
+		}
+		   
+ 		if (eof) {
+		    /* Flush out buffer */
+		    if (blen != 0) {
+ 	      	      write_block(tape, blen, tape_buffer);
+		      blen = 0;
+		    }
+	            /* Write tape mark */
+		    fwrite(&tape_mark, sizeof(uint32), 1, tape);
+		    printf("File: %d records\n", record - last);
+		    last = record;
+		}
+	    }
+
+	    /* If buffer not empty, flush it */
+	    if (len != 0) {
+	       int i;
+	       /* Fill in record with blanks */
+	       while (len < reclen) {
+                   *tape_char++ = 0120;
+		   len++;
+	       }
+
+	       /* Put $ lines in record by themselfs */
+	       if (*line_buffer == 053/*$*/) {
+		  if (blen != 0) {
+ 	      	      write_block(tape, blen, tape_buffer);
+	              blen = 0;
+		   }
+ 	      	   write_block(tape, reclen, line_buffer);
+	       } else {
+	           for(i = 0; i < len; i++) {
+	              tape_buffer[blen++] = line_buffer[i];
+	           }
+	       }
+	       len = 0;
+	       tape_char = line_buffer;
+	    }
+	    fclose(in);
+        }   
    }
-	
-   printf("EOF after %d records\n",record);
+   /* Flush out buffer if anything in it. */
+   if (blen != 0) 
+        write_block(tape, blen, tape_buffer);
+
+   /* Write tape mark */
+   fwrite(&tape_mark, sizeof(uint32), 1, tape);
+   /* Put EOM */
+   sz = 0xffffffff;
+   fwrite(&sz, sizeof(uint32), 1, tape);
+
+   if (record != last)	
+       printf("EOF: %d records\n", record - last);
+   printf("Output after %d records\n",record);
 
    free(tape_buffer);
    free(line_buffer);
@@ -218,7 +287,7 @@ int main(int argc, char **argv)
 
 void usage()
 {
-	fprintf(stderr,"Usage: bcdtape [-o <tapefile>] [-b#] [-r#] <inputfiles>\n");
+   fprintf(stderr,"Usage: mkbcdtape [-o <tapefile>] [-b#] [-r#] <inputfiles>\n");
    fprintf(stderr,"	-o: name Output file name\n");
    fprintf(stderr,"	-b#: # lines per block\n");
    fprintf(stderr,"	-r#: Characters per record #\n");
