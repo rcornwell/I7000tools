@@ -17,6 +17,7 @@ int		cc = 0;		/* Process print control chars */
 int		auto_bcd = 0;	/* Automatic translation of binary */
 int		reclen = 130;
 int		dis = 0;	/* Display code */
+int		cosy = 0;	/* Expand COSY blanks */
 
 char parity_table[64] = {
         /* 0    1    2    3    4    5    6    7 */
@@ -251,6 +252,8 @@ main(int argc, char *argv[]) {
    int		col;
    char		*p;
    FILE		*tape;
+   int		cosy_rec;
+   int		rec_cnt = 0;
 
    while(--argc && **(++argv) == '-') {
    	switch(tolower((*argv)[1])) {
@@ -282,6 +285,9 @@ main(int argc, char *argv[]) {
  	case 'l':
 		cc = 1;
 		break;
+	case 'z':
+	        cosy = 1;
+		break;
       default:
       	fprintf(stderr,"Unknown option: %s\n",*argv);
       }
@@ -300,6 +306,8 @@ main(int argc, char *argv[]) {
 
    /* Process records of the file */
    while(read_tape(tape, &sz)) {
+        cosy_rec = 0;
+	printf("Rec: %d\n", ++rec_cnt);
 	if (sz == -2) 
 	    break;
 	if (sz == -1) 
@@ -323,9 +331,9 @@ main(int argc, char *argv[]) {
 		    else if (ch == 0)
 			ch = 012;
 		}
-		if (ch == 032) {
+		if (ch == 032 && !dis) {
 		   if (mark) {
-			putchar(dis?dis_ascii[ch]:bcd_ascii[ch]);
+			putchar(bcd_ascii[ch]);
 			col++;
 		   } else {
 			putchar('\n');
@@ -333,6 +341,32 @@ main(int argc, char *argv[]) {
 		   }
 		} else {
 		    int asc = dis?dis_ascii[ch]:bcd_ascii[ch];
+		    if (cosy) {
+//		    	if (cosy_rec) {
+//			    cosy_rec++;
+//			    if (cosy_rec < 10 || cosy_rec > 152) 
+//			    	continue;
+		    	    if (ch == 0) 
+				asc = '\n';
+		    	    else if (ch >= 064) {
+				int bl = ch - 062;
+				asc = ' ';
+				if (ch >= 074) 
+					bl = 10 * (ch - 073);
+				while(--bl > 0) {
+					putchar(' ');
+					col++;
+				}
+			    }
+//			    if (cosy_rec == 152)
+//			    	cosy_rec = 0;
+//			} else {
+//			    if ((i % 160) == 1 && ch == 05) {
+//			    	cosy_rec = 1;
+//			    }
+//			    continue;
+//			}
+		    } 
 		    if (com) {
 		        switch(asc) {
 		        case '+': asc = '&'; break;
