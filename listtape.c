@@ -22,7 +22,8 @@ int		auto_bcd = 0;	/* Automatic translation of binary */
 int		reclen = 130;
 int		dis = 0;	/* Display code */
 int		cosy = 0;	/* Expand COSY blanks */
-int             univac = 0;     /* Univac code. */
+int		bci = 0;	/* Burroughs BCI code */
+int		univac = 0;	/* Univac code. */
 
 char parity_table[64] = {
         /* 0    1    2    3    4    5    6    7 */
@@ -102,6 +103,74 @@ char bcd_ascii[64] = {
 	'<',	/* 62  BA842   - less than 036 */
 	'}'	/* 63  BA8421  - group mark 037 */
 };
+
+char bci_ascii[64] = {
+	'0',	/* 0           - space */
+	'1',	/* 1        1  - 1 */
+	'2',	/* 2       2   - 2 */
+	'3',	/* 3       21  - 3 */
+	'4',	/* 4      4    - 4 */
+	'5',	/* 5      4 1  - 5 */
+	'6',    /* 6      42   - 6 */
+	'7',	/* 7	  421  - 7 */
+	'8',	/* 8     8     - 8 */
+	'9',	/* 9     8  1  - 9 */
+	'#',	/* 10    8 2   - 0 */
+	'@',    /* 11    8 21  - atsign */
+	'?',	/* 12    84    - question */
+	':',    /* 13    84 1  - colon */
+	'>',	/* 14    842   - greater than */
+	'}',	/* 15    8421  - greater or equal */
+	'+',    /* 48  BA      - ampersand or plus */
+	'A',	/* 49  BA   1  - A */
+	'B',    /* 50  BA  2   - B */
+	'C',	/* 51  BA  21  - C */
+	'D',	/* 52  BA 4    - D */
+	'E',	/* 53  BA 4 1  - E */
+	'F',	/* 54  BA 42   - F */
+	'G',	/* 55  BA 421  - G */
+	'H',	/* 56  BA8     - H */
+	'I',	/* 57  BA8  1  - I */
+	'.',	/* 58  BA8 2   - period */
+	'[',	/* 59  BA8 21  - left bracket */
+	'&',	/* 60  BA84    - and */
+	'(',	/* 61  BA84 1  - left paren 035 */
+	'<',	/* 62  BA842   - less than 036 */
+	'~',	/* 63  BA8421  - left arrow 037 */
+	'|',	/* 32  B       - bar */
+	'J',	/* 33  B    1  - J */
+	'K',	/* 34  B   2   - K */
+	'L',	/* 35  B   21  - L */
+	'M',	/* 36  B  4    - M */
+	'N',	/* 37  B  4 1  - N */
+	'O',	/* 38  B  42   - O */
+	'P',	/* 39  B  421  - P */
+	'Q',	/* 40  B 8     - Q */
+	'R',	/* 41  B 8  1  - R */
+	'$',	/* 42  B 8 2   - dollar sign */
+	'*',	/* 43  B 8 21  - asterisk */
+	'-',	/* 44  B 84    - minus */
+	')',	/* 45  B 84 1  - right paren */
+	';',    /* 46  B 842   - semicolon */
+	'{',    /* 47  B 8421  - less or equal */
+	' ',    /* 16   A      - substitute blank */
+	'/',	/* 17   A   1  - slash */
+	'S',	/* 18   A  2   - S */
+	'T',	/* 19   A  21  - T */
+	'U',	/* 20   A 4    - U */
+	'V',	/* 21   A 4 1  - V */
+	'W',	/* 22   A 42   - W */
+	'X',	/* 23   A 421  - X */
+	'Y',	/* 24   A8     - Y */
+	'Z',	/* 25   A8  1  - Z */
+	',',	/* 26   A8 2   - comma */
+	'%',	/* 27   A8 21  - percent */
+	'!',	/* 28   A84    - not equal */
+	'=',	/* 29   A84 1  - equal */
+	']',	/* 30   A842   - right brack */
+	'"'	/* 31   A8421  - qoute */
+};
+
 
 char dis_ascii[64] = {
 	':',	/* 0           - space */
@@ -249,6 +318,7 @@ void usage() {
    fprintf(stderr,"     -p:  Read BCD tape instead of TAP format\n");
    fprintf(stderr,"     -c:  Print with commerical charset\n");
    fprintf(stderr,"     -l:  Process listing control chars\n");
+   fprintf(stderr,"     -i:  Display BCI character encoding\n");
    fprintf(stderr,"     -u:  Use univac character encoding\n");
    fprintf(stderr,"     -z:  Display CDC Cosy records\n");
    exit(1);
@@ -329,7 +399,6 @@ int main(int argc, char *argv[]) {
    char		*p;
    FILE		*tape;
    int		cosy_rec;
-   int		rec_cnt = 0;
 
    while(--argc && **(++argv) == '-') {
    	switch(tolower((*argv)[1])) {
@@ -364,6 +433,9 @@ int main(int argc, char *argv[]) {
 	case 'u':
 		univac = 1;
 		break;
+	case 'i':
+		bci = 1;
+		break;
 	case 'z':
 	        cosy = 1;
 		break;
@@ -386,7 +458,6 @@ int main(int argc, char *argv[]) {
    /* Process records of the file */
    while(read_tape(tape, &sz)) {
         cosy_rec = 0;
-	printf("Rec: %d\n", ++rec_cnt);
 	if (sz == -2) 
 	    break;
 	if (sz == -1) 
@@ -410,7 +481,7 @@ int main(int argc, char *argv[]) {
 		    else if (ch == 0)
 			ch = 012;
 		}
-		if (ch == 032 && !(dis | univac)) {
+		if (ch == 032 && !(dis | univac | bci)) {
 		   if (mark) {
 			putchar(bcd_ascii[ch]);
 			col++;
@@ -422,6 +493,8 @@ int main(int argc, char *argv[]) {
 		    int asc = bcd_ascii[ch];
 		    if (dis) 
 			asc = dis_ascii[ch];
+		    else if (bci)
+			asc = bci_ascii[ch];
 		    else if (univac)
 			asc = univ_ascii[ch];
 		    if (cosy) {
