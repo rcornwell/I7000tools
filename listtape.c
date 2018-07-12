@@ -12,12 +12,14 @@
 #define BCD_TM 017
                       
 char		buffer[TAPE_BUFFER_SIZE];
+char		*xlat;		/* Pointer to translate table */
 int		eor = 0;	/* Report eor */
 int		bin = 0;	/* Doing binary */
 int		p7b = 0;	/* Doing BCD tape */
 int		mark = 0;	/* Show marks */
 int		com = 0;	/* Show as commercial */
 int		cc = 0;		/* Process print control chars */
+int		ibm029 = 0;	/* Translate using IBM 029 codes */
 int		auto_bcd = 0;	/* Automatic translation of binary */
 int		reclen = 130;
 int		dis = 0;	/* Display code */
@@ -103,6 +105,74 @@ char bcd_ascii[64] = {
 	'<',	/* 62  BA842   - less than 036 */
 	'}'	/* 63  BA8421  - group mark 037 */
 };
+
+char bcd029_ascii[64] = {
+        '#',    /* 0           - space */
+        '1',    /* 1        1  - 1 */
+        '2',    /* 2       2   - 2 */
+        '3',    /* 3       21  - 3 */
+        '4',    /* 4      4    - 4 */
+        '5',    /* 5      4 1  - 5 */
+        '6',    /* 6      42   - 6 */
+        '7',    /* 7      421  - 7 */
+        '8',    /* 8     8     - 8 */
+        '9',    /* 9     8  1  - 9 */
+        '0',    /* 10    8 2   - 0 */
+        '@',    /* 11    8 21  - equal */
+        '?',    /* 12    84    - apostrophe */
+        ':',    /* 13    84 1  - colon */
+        '>',    /* 14    842   - greater than */
+        '}',    /* 15    8421  - radical 017 {? */
+        ' ',    /* 16   A      - substitute blank */
+        '/',    /* 17   A   1  - slash */
+        'S',    /* 18   A  2   - S */
+        'T',    /* 19   A  21  - T */
+        'U',    /* 20   A 4    - U */
+        'V',    /* 21   A 4 1  - V */
+        'W',    /* 22   A 42   - W */
+        'X',    /* 23   A 421  - X */
+        'Y',    /* 24   A8     - Y */
+        'Z',    /* 25   A8  1  - Z */
+        ',',    /* 26   A8 2   - record mark */
+        '%',    /* 27   A8 21  - comma */
+        '!',    /* 28   A84    - paren */
+        '=',    /* 29   A84 1  - word separator */
+        ']',    /* 30   A842   - left oblique */
+        '"',    /* 31   A8421  - segment mark */
+        '|',    /* 32  B       - hyphen */
+        'J',    /* 33  B    1  - J */
+        'K',    /* 34  B   2   - K */
+        'L',    /* 35  B   21  - L */
+        'M',    /* 36  B  4    - M */
+        'N',    /* 37  B  4 1  - N */
+        'O',    /* 38  B  42   - O */
+        'P',    /* 39  B  421  - P */
+        'Q',    /* 40  B 8     - Q */
+        'R',    /* 41  B 8  1  - R */
+        '$',    /* 42  B 8 2   - exclamation */
+        '*',    /* 43  B 8 21  - dollar sign */
+        '-',    /* 44  B 84    - asterisk */
+        ')',    /* 45  B 84 1  - right bracket */
+        ';',    /* 46  B 842   - semicolon */
+        '{',    /* 47  B 8421  - delta */
+        '+',    /* 48  BA      - ampersand or plus */
+        'A',    /* 49  BA   1  - A */
+        'B',    /* 50  BA  2   - B */
+        'C',    /* 51  BA  21  - C */
+        'D',    /* 52  BA 4    - D */
+        'E',    /* 53  BA 4 1  - E */
+        'F',    /* 54  BA 42   - F */
+        'G',    /* 55  BA 421  - G */
+        'H',    /* 56  BA8     - H */
+        'I',    /* 57  BA8  1  - I */
+        '.',    /* 58  BA8 2   - question mark 032 */
+        '[',    /* 59  BA8 21  - period */
+        '&',    /* 60  BA84    - paren */
+        '(',    /* 61  BA84 1  - left bracket 035 */
+        '<',    /* 62  BA842   - less than 036 */
+        '~'     /* 63  BA8421  - group mark 037 */
+};
+
 
 char bci_ascii[64] = {
 	'0',	/* 0           - space */
@@ -313,6 +383,7 @@ void usage() {
    fprintf(stderr,"     -a:  Auto Binary/BCD translation\n");
    fprintf(stderr,"     -b:  Use IBSYS binary translation\n");
    fprintf(stderr,"     -d:  Use CDC Display Code translation\n");
+   fprintf(stderr,"     -9:  Use IBM029 translation\n");
    fprintf(stderr,"     -m:  Show record marks |\n");
    fprintf(stderr,"     -e:  Show end of records as {\n");
    fprintf(stderr,"     -p:  Read BCD tape instead of TAP format\n");
@@ -400,6 +471,7 @@ int main(int argc, char *argv[]) {
    FILE		*tape;
    int		cosy_rec;
 
+   xlat = &bcd_ascii[0];
    while(--argc && **(++argv) == '-') {
    	switch(tolower((*argv)[1])) {
 	case 'r':
@@ -414,6 +486,7 @@ int main(int argc, char *argv[]) {
 		break;
 	case 'd':
 		dis = 1;
+		xlat = &dis_ascii[0];
 		break;
 	case 'b':
 		bin = 1;
@@ -432,9 +505,15 @@ int main(int argc, char *argv[]) {
 		break;
 	case 'u':
 		univac = 1;
+		xlat = &univ_ascii[0];
 		break;
 	case 'i':
 		bci = 1;
+		xlat = &bci_ascii[0];
+		break;
+	case '9':
+		ibm029 = 1;
+		xlat = &bcd029_ascii[0];
 		break;
 	case 'z':
 	        cosy = 1;
@@ -483,20 +562,14 @@ int main(int argc, char *argv[]) {
 		}
 		if (ch == 032 && !(dis | univac | bci)) {
 		   if (mark) {
-			putchar(bcd_ascii[ch]);
+			putchar(xlat[ch]);
 			col++;
 		   } else {
 			putchar('\n');
 			col = 0;
 		   }
 		} else {
-		    int asc = bcd_ascii[ch];
-		    if (dis) 
-			asc = dis_ascii[ch];
-		    else if (bci)
-			asc = bci_ascii[ch];
-		    else if (univac)
-			asc = univ_ascii[ch];
+		    int asc = xlat[ch];
 		    if (cosy) {
 		    	if (ch == 0) 
 			    asc = '\n';
