@@ -12,10 +12,12 @@ int		eor = 0;	/* Report eor */
 int		bin = 0;	/* Doing binary */
 int		p7b = 0;	/* Doing BCD tape */
 int		mark = 0;	/* Show marks */
+int		com = 0;	/* Show as commercial */
+int		cc = 0;		/* Process print control chars */
 int		reclen = 130;
 
 char bcd_ascii[64] = {
-	'b',	/* 0           - space */
+	'_',	/* 0           - space */
 	'1',	/* 1        1  - 1 */
 	'2',	/* 2       2   - 2 */
 	'3',	/* 3       21  - 3 */
@@ -30,7 +32,7 @@ char bcd_ascii[64] = {
 	'\'',	/* 12    84    - apostrophe */
 	':',    /* 13    84 1  - colon */
 	'>',	/* 14    842   - greater than */
-	'&',	/* 15    8421  - radical 017 {? */
+	'"',	/* 15    8421  - radical 017 {? */
 	' ',    /* 16   A      - substitute blank */
 	'/',	/* 17   A   1  - slash */
 	'S',	/* 18   A  2   - S */
@@ -41,12 +43,12 @@ char bcd_ascii[64] = {
 	'X',	/* 23   A 421  - X */
 	'Y',	/* 24   A8     - Y */
 	'Z',	/* 25   A8  1  - Z */
-	'|',	/* 26   A8 2   - record mark */
+	'#',	/* 26   A8 2   - record mark */
 	',',	/* 27   A8 21  - comma */
 	'(',	/* 28   A84    - paren */
-	'~',	/* 29   A84 1  - word separator */
+	'`',	/* 29   A84 1  - word separator */
 	'\\',	/* 30   A842   - left oblique */
-	'"',    /* 31   A8421  - segment mark */
+	'{',    /* 31   A8421  - segment mark */
 	'-',	/* 32  B       - hyphen */
 	'J',	/* 33  B    1  - J */
 	'K',	/* 34  B   2   - K */
@@ -88,6 +90,8 @@ void usage() {
    fprintf(stderr,"     -m:  Show record marks |\n");
    fprintf(stderr,"     -e:  Show end of records as {\n");
    fprintf(stderr,"     -p:  Read BCD tape instead of TAP format\n");
+   fprintf(stderr,"     -c:  Print with commerical charset\n");
+   fprintf(stderr,"     -l:  Process listing control chars\n");
    exit(1);
 }
 
@@ -184,6 +188,12 @@ main(int argc, char *argv[]) {
 	case 'm':
 		mark = 1;
 		break;
+	case 'c':
+		com = 1;
+		break;
+ 	case 'l':
+		cc = 1;
+		break;
       default:
       	fprintf(stderr,"Unknown option: %s\n",*argv);
       }
@@ -225,7 +235,23 @@ main(int argc, char *argv[]) {
 			col = 0;
 		   }
 		} else {
-		   putchar(bcd_ascii[ch]);
+		    int asc = bcd_ascii[ch];
+		    if (com) {
+		        switch(asc) {
+		        case '+': asc = '&'; break;
+			case '(': asc = '%'; break;
+			case '\'': asc = '@'; break;
+		        }
+	 	   }
+		   if (cc && col == 0) {
+			switch(asc) {
+			case '1': putchar('\f'); break;
+			case '2': putchar('\n');
+			case '0': putchar('\n'); 
+			default: break;
+			}
+		   } else 
+		       putchar(asc);
 		   if((++col == reclen && sz != (i+1))){
 		       putchar('\n');
 		       col = 0;
