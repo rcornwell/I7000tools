@@ -14,7 +14,21 @@ int		p7b = 0;	/* Doing BCD tape */
 int		mark = 0;	/* Show marks */
 int		com = 0;	/* Show as commercial */
 int		cc = 0;		/* Process print control chars */
+int		auto_bcd = 0;	/* Automatic translation of binary */
 int		reclen = 130;
+int		dis = 0;	/* Display code */
+
+char parity_table[64] = {
+        /* 0    1    2    3    4    5    6    7 */
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0100,0000,0000,0100,0000,0100,0100,0000,
+        0100,0000,0000,0100,0000,0100,0100,0000,
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0100,0000,0000,0100,0000,0100,0100,0000,
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0000,0100,0100,0000,0100,0000,0000,0100,
+        0100,0000,0000,0100,0000,0100,0100,0000
+};
 
 char bcd_ascii[64] = {
 	'_',	/* 0           - space */
@@ -83,9 +97,77 @@ char bcd_ascii[64] = {
 	'}'	/* 63  BA8421  - group mark 037 */
 };
 
+char dis_ascii[64] = {
+	':',	/* 0           - space */
+	'A',	/* 1        1  - 1 */
+	'B',	/* 2       2   - 2 */
+	'C',	/* 3       21  - 3 */
+	'D',	/* 4      4    - 4 */
+	'E',	/* 5      4 1  - 5 */
+	'F',    /* 6      42   - 6 */
+	'G',	/* 7	  421  - 7 */
+	'H',	/* 8     8     - 8 */
+	'I',	/* 9     8  1  - 9 */
+	'J',	/* 10    8 2   - 0 */
+	'K',    /* 11    8 21  - equal */
+	'L',	/* 12    84    - apostrophe */
+	'M',    /* 13    84 1  - colon */
+	'N',	/* 14    842   - greater than */
+	'O',	/* 15    8421  - radical 017 {? */
+	'P',    /* 16   A      - substitute blank */
+	'Q',	/* 17   A   1  - slash */
+	'R',	/* 18   A  2   - S */
+	'S',	/* 19   A  21  - T */
+	'T',	/* 20   A 4    - U */
+	'U',	/* 21   A 4 1  - V */
+	'V',	/* 22   A 42   - W */
+	'W',	/* 23   A 421  - X */
+	'X',	/* 24   A8     - Y */
+	'Y',	/* 25   A8  1  - Z */
+	'Z',	/* 26   A8 2   - record mark */
+	'0',	/* 27   A8 21  - comma */
+	'1',	/* 28   A84    - paren */
+	'2',	/* 29   A84 1  - word separator */
+	'3',	/* 30   A842   - left oblique */
+	'4',    /* 31   A8421  - segment mark */
+	'5',	/* 32  B       - hyphen */
+	'6',	/* 33  B    1  - J */
+	'7',	/* 34  B   2   - K */
+	'8',	/* 35  B   21  - L */
+	'9',	/* 36  B  4    - M */
+	'+',	/* 37  B  4 1  - N */
+	'-',	/* 38  B  42   - O */
+	'*',	/* 39  B  421  - P */
+	'/',	/* 40  B 8     - Q */
+	'(',	/* 41  B 8  1  - R */
+	')',	/* 42  B 8 2   - exclamation */
+	'$',	/* 43  B 8 21  - dollar sign */
+	'=',	/* 44  B 84    - asterisk */
+	' ',	/* 45  B 84 1  - right bracket */
+	',',    /* 46  B 842   - semicolon */
+	'.',    /* 47  B 8421  - delta */
+	'\'',    /* 48  BA      - ampersand or plus */
+	'[',	/* 49  BA   1  - A */
+	']',    /* 50  BA  2   - B */
+	'%',	/* 51  BA  21  - C */
+	'!',	/* 52  BA 4    - D */
+	'a',	/* 53  BA 4 1  - E */
+	'b',	/* 54  BA 42   - F */
+	'c',	/* 55  BA 421  - G */
+	'd',	/* 56  BA8     - H */
+	'e',	/* 57  BA8  1  - I */
+	'f',	/* 58  BA8 2   - question mark 032 */
+	'g',	/* 59  BA8 21  - period */
+	'h',	/* 60  BA84    - paren */
+	'i',	/* 61  BA84 1  - left bracket 035 */
+	'j',	/* 62  BA842   - less than 036 */
+	';'	/* 63  BA8421  - group mark 037 */
+};
+
 void usage() {
    fprintf(stderr,"Usage: listtape [-b] [-e] [-p] [-r#] <tapefile>\n");
    fprintf(stderr,"     -r#: Characters per record #\n");
+   fprintf(stderr,"     -a:  Auto Binary/BCD translation\n");
    fprintf(stderr,"     -b:  Use IBSYS binary translation\n");
    fprintf(stderr,"     -m:  Show record marks |\n");
    fprintf(stderr,"     -e:  Show end of records as {\n");
@@ -176,8 +258,14 @@ main(int argc, char *argv[]) {
 		reclen = atoi(&(*argv)[2]);
       	fprintf(stderr,"Recordlen set: %d\n",reclen);
 		break;
+	case 'a':
+		auto_bcd = 1;
+		break;
 	case 'e':
 		eor = 1;
+		break;
+	case 'd':
+		dis = 1;
 		break;
 	case 'b':
 		bin = 1;
@@ -220,22 +308,31 @@ main(int argc, char *argv[]) {
 	    p = buffer;
 	    col = 0;
 	    for(i = 0; i < sz; i++)  {
-		char	ch = *p++ & 077;
+		char	ch = *p++;
+		if (auto_bcd) {
+		    if (parity_table[ch & 077] == (ch & 0100)) 
+			bin = 0;
+		    else
+			bin = 1;
+		}
+                ch &= 077;
 		if (bin) {
 		    ch ^= (ch & 020) << 1;
 		    if (ch == 012)
-			    ch = 0;   
+		        ch = 0;   
+		    else if (ch == 0)
+			ch = 012;
 		}
 		if (ch == 032) {
 		   if (mark) {
-			putchar(bcd_ascii[ch]);
+			putchar(dis?dis_ascii[ch]:bcd_ascii[ch]);
 			col++;
 		   } else {
 			putchar('\n');
 			col = 0;
 		   }
 		} else {
-		    int asc = bcd_ascii[ch];
+		    int asc = dis?dis_ascii[ch]:bcd_ascii[ch];
 		    if (com) {
 		        switch(asc) {
 		        case '+': asc = '&'; break;
