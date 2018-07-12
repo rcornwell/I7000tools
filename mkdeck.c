@@ -306,7 +306,7 @@ int good_card(unsigned short image[80]) {
 	t = 1;
 	bl = 0;
 	/* Check first word of card */
-        for (j = 0, i = 0; i < 35; i++) {
+        for (j = 0, i = 0; i < 36; i++) {
      	    wd = (wd << 1) | image[i] & 1;
      	    t &= image[i] & 1;
 	    bl |= image[i] & 1;
@@ -320,7 +320,7 @@ int good_card(unsigned short image[80]) {
 	    return 0;
 	}
 	/* If no data in 9L/9R, skip */
-	if (bl == 0) {
+	if (bl == 0 || wd == 0200000000000LL) {
 	    return 0;
 	}
     }
@@ -454,7 +454,6 @@ main(int argc, char *argv[]) {
             memset(image, 0, sizeof(image));
             col = 0;
             t = 6;
-	    ccard = 0;
             while(!feof(f)) {
                 ch = fgetc(f);
 	        if (ch & 0x80) {
