@@ -76,7 +76,7 @@ void dump_card(FILE *of, unsigned short image[80]) {
     if (label) {
 	char	*p = label;
         unsigned short	temp;
-	for (i = 71; i < 80; i++) {
+	for (i = 72; i < 80; i++) {
 	    temp = ascii_to_hol[*p++];
 	    if ((temp & 0xf000) == 0) 
 	         image[i] = temp;
@@ -180,7 +180,7 @@ void transfer_card(char *addr, FILE *of) {
 void set_addr(char *addr, unsigned short image[80]) {
     int		loc = 0;
     int		i;
-    memset(image, 0, sizeof(image));
+    memset(image, 0, 80);
     if (*addr == '0') {
 	while(*addr != '\0') {
 	    loc <<= 3;
@@ -368,7 +368,7 @@ main(int argc, char *argv[]) {
     int		   col;
     int		   t;
     int		   i, j;
-    int		   ch;
+    unsigned char  ch;
     int		   card;
     char	   *n;
     FILE	   *of = stdout;
@@ -380,7 +380,7 @@ main(int argc, char *argv[]) {
 	    switch (n[1]) {
 	    case 'o':   /* Output file */
 		n = *++argv;
-		if ((of = fopen(n, "w")) == NULL) {
+		if ((of = fopen(n, "wb")) == NULL) {
 		    fprintf(stderr, "Unable to open: %s for output\n", n);
 		    exit(1);
 		}
@@ -446,7 +446,7 @@ main(int argc, char *argv[]) {
 		break;
 	    }
 	} else {
-	    if ((f = fopen(n, "r")) == NULL) {
+	    if ((f = fopen(n, "rb")) == NULL) {
                fprintf(stderr, "Unable to open: %s\n", n);
                exit(1);
             }
@@ -454,6 +454,7 @@ main(int argc, char *argv[]) {
             memset(image, 0, sizeof(image));
             col = 0;
             t = 6;
+	    ccard = 0;
             while(!feof(f)) {
                 ch = fgetc(f);
 	        if (ch & 0x80) {
