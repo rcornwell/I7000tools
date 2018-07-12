@@ -6,9 +6,14 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 int	sequence = 0;
 int	cardno = 1;
+int	image_mode = 0;
+int	fcard = 0;
+int	lcard = -1;
+int	ccard = 0;
 char	*label = NULL;
 int	wrdnum;
 
@@ -65,6 +70,7 @@ void dump_card(FILE *of, unsigned short image[80]) {
     int 	   t;
     int		   i, j;
     unsigned char  out[160]; 
+
 
     /* Fill in label columns */
     if (label) {
@@ -148,6 +154,7 @@ void transfer_card(char *addr, FILE *of) {
     unsigned short image[80];
     int		loc = 0;
     int		i;
+
     memset(image, 0, sizeof(image));
     image[43] = 1;
     if (*addr == '0') {	/* Octal */
@@ -284,9 +291,16 @@ int good_card(unsigned short image[80]) {
     unsigned long long wd;
     int		   bl;
 
+    ccard++;
+    if (image_mode)
+	return 1;
     for (t = i = 0; i < 80; i++) t |= image[i];
     if (t == 0) {
         return 0;	/* Ignore blank cards */
+    } else  if (ccard < fcard) { /* Before first card? */
+	return 0;
+    } else if (lcard > 0 && ccard > lcard) { /* After the last card? */
+	return 0;
     } else {
 	wd = 0;
 	t = 1;
@@ -374,6 +388,18 @@ main(int argc, char *argv[]) {
 	    case 't':   /* Tranfer card */
 		transfer_card(*++argv, of);
 		break;
+	    case 'B':	/* Truely Blank card. */
+                memset(image, 0, sizeof(image));
+		{
+		   int seq = sequence;
+		   char *lab = label;
+		   sequence = 0;
+		   label = NULL;
+		   dump_card(of, image);
+		   sequence = seq;
+		   label = lab;
+		}
+		break;
 	    case 'b':	/* Blank card */
                 memset(image, 0, sizeof(image));
 		dump_card(of, image);
@@ -387,6 +413,9 @@ main(int argc, char *argv[]) {
 		dump_text(of, f);
 		fclose(f);
 		break;
+	    case 'i':	/* Toggle image mode */
+		image_mode = !image_mode;
+		break;
 	    case 'l':	/* Set label */
 		label = *++argv;
 		break;
@@ -399,8 +428,22 @@ main(int argc, char *argv[]) {
 		while(add_data(*++argv, image)); 
 		argv--;	/* Back up one argumement */
 		checksum(image); /* Compute checksum */
-	      print_card(image);
 		dump_card(of, image);
+		break;
+	    case 'f':	/* Start card */
+		++argv;
+		if (*argv[0] == 't') 
+		    fcard = -1;
+		else
+		    fcard = atoi(*argv);
+		break;
+	    case 'e':	/* Final card */
+		++argv;
+		if (*argv[0] == 't') 
+		    lcard = -1;
+		else
+		    lcard = atoi(*argv);
+		break;
 	    }
 	} else {
 	    if ((f = fopen(n, "r")) == NULL) {
@@ -415,9 +458,10 @@ main(int argc, char *argv[]) {
                 ch = fgetc(f);
 	        if (ch & 0x80) {
 	           if (col != 0) {
-	                if (good_card(image))
+	                if (good_card(image)) {
 			    dump_card(of, image);
-	                card++;
+	                    card++;
+			}
                     }
 	            memset(image, 0, sizeof(image));
 	            col = 0;
@@ -433,10 +477,14 @@ main(int argc, char *argv[]) {
            } 
            fclose(f);
            if (col != 0) {
-	      card++;
-	      if (good_card(image))
+	      if (good_card(image)) {
 	          dump_card(of, image);
+	          card++;
+	      }
            }
+	   ccard = 0;
+	   fcard = 0;
+	   lcard = -1;
          }
      }
    fprintf(stderr, "%d cards in deck\n", cardno);
