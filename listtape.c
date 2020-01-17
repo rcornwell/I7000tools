@@ -397,22 +397,24 @@ void usage() {
 
 /* Read one record from tape */
 int read_tape(FILE *f, int *len) {
-   unsigned long int sz;
+   unsigned int sz;
    *len = 0;
    if (p7b) {
 	static unsigned char lastchar = 0xff;
 	unsigned char	    ch;
         sz = 0;
-	if (lastchar != 0xff) 
-	    buffer[sz++] = lastchar;
 	/* Check if last char was Tape Mark */
-	else if (lastchar == (BCD_TM|TAPE_IRG)) {
+	if (lastchar == (BCD_TM|TAPE_IRG)) {
 	    lastchar = 0xff;
 	    *len = -1;
 	    return 1;
 	}
+	if (lastchar != 0xff) 
+	    buffer[sz++] = lastchar;
 	lastchar = 0xff;
 	while(fread(&ch, sizeof(unsigned char), 1, f) == 1) {
+	    if (sz == 0 && lastchar == 0xff)
+		ch &= ~TAPE_IRG;
 	    if (ch & TAPE_IRG) {
 	        lastchar = ch;
 		*len = sz;
@@ -457,7 +459,18 @@ int read_tape(FILE *f, int *len) {
            return 0;
         }
         /* Read backward length */
-        fread(&sz, sizeof(unsigned long int), 1, f);
+        if (fread(&xlen, sizeof(unsigned char), 4, f) != 4) 
+	    return 0;
+	/* Convert to number */
+	sz = xlen[0];
+	sz |= (xlen[1]) << 8;
+	sz |= (xlen[2]) << 16;
+	sz |= (xlen[3]) << 24;
+        /* Verify that sizes match */
+        if (sz != *len) {
+           fprintf(stderr, "Tape length error %d != %d\n", sz, *len);
+           return 0;
+        }
    }
    return 1;
 }
