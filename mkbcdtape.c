@@ -142,7 +142,7 @@ int main(int argc, char **argv)
    unsigned char  *tape_char;
    uint32	sz;
    uint32       blen = 0;
-   char	 	ch;
+   int	 	ch;
    int		len;
    int		cblk;
    int	   	record = 0;
